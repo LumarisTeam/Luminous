@@ -1,14 +1,9 @@
 {
   "mcpServers": {
-    "luminous-mcp-server": {
-      "command": "go",
-      "args": ["run", "./cmd/luminous-mcp-server"],
-      "cwd": "/path/to/Luminous",
-      "env": {
-        "API_BASE_URL": "http://localhost:8080",
-        "API_TOKEN": "",
-        "HTTP_TIMEOUT_SECONDS": "10",
-        "LOG_LEVEL": "info"
+    "luminous": {
+      "url": "http://localhost:8080/mcp",
+      "headers": {
+        "Authorization": "Bearer your-mcp-secret-token"
       }
     }
   }

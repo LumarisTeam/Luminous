@@ -21,6 +21,7 @@ type ServerConfig struct {
 
 type AuthConfig struct {
 	AdminToken string
+	MCPToken   string
 }
 
 type DatabaseConfig struct {
@@ -125,6 +126,7 @@ func LoadConfig() (*AppConfig, error) {
 		},
 		Auth: AuthConfig{
 			AdminToken: getEnv(fileVals, "LUMINOUS_AUTH_ADMIN_TOKEN", ""),
+			MCPToken:   getEnv(fileVals, "LUMINOUS_MCP_TOKEN", ""),
 		},
 		Database: DatabaseConfig{
 			DSN:          getEnv(fileVals, "LUMINOUS_DATABASE_DSN", ""),

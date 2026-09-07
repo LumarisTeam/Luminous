@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"luminous/internal/handler"
+	"luminous/internal/mcpserver"
 	"luminous/internal/middleware"
 	"luminous/internal/response"
 
@@ -20,6 +21,8 @@ func SetupRouter(
 	corsOrigin string,
 	rateLimitRate, rateLimitBurst int,
 	trustedProxies string,
+	mcpHandler http.Handler,
+	mcpToken string,
 ) (*gin.Engine, error) {
 	r := gin.New()
 	r.Use(gin.Logger())
@@ -66,6 +69,15 @@ func SetupRouter(
 		admin.POST("/schools", adminHandler.CreateSchool)
 		admin.PUT("/schools/:code", adminHandler.UpdateSchool)
 		admin.DELETE("/schools/:code", adminHandler.DeleteSchool)
+	}
+
+	if mcpHandler != nil {
+		mcp := r.Group("/mcp")
+		if mcpToken != "" {
+			mcp.Use(mcpserver.TokenMiddleware(mcpToken))
+		}
+		mcp.Any("", gin.WrapH(mcpHandler))
+		mcp.Any("/", gin.WrapH(mcpHandler))
 	}
 
 	return r, nil

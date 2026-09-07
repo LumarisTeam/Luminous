@@ -19,7 +19,7 @@ Luminous/
 ├── cmd/
 │   ├── server/main.go              # HTTP 服务入口，优雅关闭
 │   ├── migrate/main.go             # JSON → PostgreSQL 数据迁移工具
-│   └── luminous-mcp-server/main.go # MCP Server 入口（stdio 传输）
+│   └── server/main.go               # HTTP 服务及 MCP /mcp 入口
 ├── data/
 │   └── schools.json                # 种子数据（4 所西安高校）
 ├── internal/
@@ -88,7 +88,7 @@ Luminous/
 |------|------|
 | `cmd/server/main.go` | 服务主入口。加载配置 → 设置 Gin 模式 → 连接 PostgreSQL → 创建三层 handler → 注册路由 → 启动 HTTP（可选 TLS）→ 监听 SIGINT/SIGTERM 优雅关闭（10s 超时）。关闭时停止限流清理协程。 |
 | `cmd/migrate/main.go` | 一次性数据迁移工具。读取种子 JSON，逐条 INSERT 到 PostgreSQL（`ON CONFLICT DO NOTHING`）。默认路径 `./data/schools.json`，可通过命令行参数覆盖。 |
-| `cmd/luminous-mcp-server/main.go` | MCP Server 入口。加载环境变量 → 创建 HTTP 客户端 → 注册 skill → 启动 stdio MCP Server。供 Claude Code / Claude Desktop 等 MCP Client 调用。 |
+| `cmd/server/main.go` | HTTP 服务入口，同时挂载 Streamable HTTP MCP `/mcp`。 |
 
 ### 配置层 (`internal/config/`)
 
@@ -135,10 +135,7 @@ Luminous/
 
 | 文件 | 说明 |
 |------|------|
-| `cmd/luminous-mcp-server/main.go` | MCP Server 入口。读取 `API_BASE_URL` / `API_TOKEN` / `HTTP_TIMEOUT_SECONDS` / `LOG_LEVEL` 环境变量 → 创建 HTTP 客户端 → 注册工具 → 启动 stdio MCP Server。日志输出到 stderr，协议消息输出到 stdout。 |
-| `mcp/protocol.go` | JSON-RPC 2.0 请求 / 响应 / 错误类型定义。MCP 标准类型：`InitializeParams` / `InitializeResult`、`CallToolParams` / `CallToolResult` 等。遵循 MCP 2024-11-05 协议。 |
-| `mcp/handler.go` | MCP 方法路由分发。支持 `initialize`、`tools/list`、`tools/call`、`ping` 及 `notifications/initialized` 通知。工具执行失败时通过 `isError=true` 而非 JSON-RPC error 返回，符合 MCP 规范。 |
-| `mcp/server.go` | Stdio 传输层。`bufio.Scanner` 从 stdin 逐行读取 JSON-RPC 请求，处理后通过 `json.Encoder` 写入 stdout。buffer 上限 2MB，适应大型工具结果。 |
+| `internal/mcpserver/server.go` | 基于官方 Go SDK 的 Streamable HTTP MCP Server。挂载 `/mcp`，提供学校查询、课程、成绩、考试、校车和电费工具；教务请求按学校 `website` 动态代理。 |
 | `skill/skill.go` | `Tool` 接口定义（`Definition()` + `Execute()`）及 MCP 工具元数据类型：`ToolDef`、`InputSchema`、`PropertyDef`。 |
 | `skill/registry.go` | 线程安全的工具注册表。`Register()` 防重复、`Get()` 按名查找、`List()` 返回全部工具定义。 |
 | `httpclient/client.go` | 轻量 HTTP 客户端。支持可选 Bearer Token、可配置超时、context 控制。错误信息仅包含 HTTP 状态码，不泄露响应体。 |
@@ -466,11 +463,13 @@ go fmt ./...
 
 ## MCP Server
 
-本项目包含一个 MCP (Model Context Protocol) Server，允许 Claude Code、Claude Desktop 等 MCP Client 通过标准化协议调用后端 HTTP API。
+本项目通过 `GET/POST /mcp` 提供 MCP Streamable HTTP 服务，允许 Claude Code、Claude Desktop 等客户端调用学校发现和教务工具。
 
-### 什么是 MCP Server
+设置 `LUMINOUS_MCP_TOKEN` 后，客户端必须发送对应的 `Authorization: Bearer ...`；不设置时端点不要求 Token。工具参数中的 `school_code` 决定要调用的学校，认证类工具另外接收教务系统 Cookie。
 
-MCP Server 是一个基于 JSON-RPC 2.0 的工具服务器，通过 stdio 与 AI Agent 通信。Agent 可以自动发现服务器提供的工具（tools），并调用它们来获取实时数据或执行操作。
+### 客户端配置
+
+服务启动后，将 `http://localhost:8080/mcp` 填入 MCP 客户端配置；示例见 `examples/mcp-config.example.json`。
 
 ### 快速开始
 

@@ -44,6 +44,8 @@ COPY --from=builder --chown=65534:65534 /build/luminous .
 #   LUMINOUS_SERVER_TRUSTED_PROXIES=10.0.0.0/8,172.16.0.0/12
 # Auth:
 #   LUMINOUS_AUTH_ADMIN_TOKEN=<your-secret-token>
+# MCP:
+#   LUMINOUS_MCP_TOKEN=<optional-mcp-token>
 # Database:
 #   LUMINOUS_DATABASE_DSN=postgresql://user:password@host:port/dbname
 #   LUMINOUS_DATABASE_POOL_MAX_CONNS=20

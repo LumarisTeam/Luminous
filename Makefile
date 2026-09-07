@@ -11,3 +11,6 @@ clean:
 
 test:
 	go test ./...
+
+build-mcp:
+	go build -o bin/luminous ./cmd/server/

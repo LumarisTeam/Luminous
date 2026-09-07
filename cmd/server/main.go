@@ -13,6 +13,7 @@ import (
 
 	"luminous/internal/config"
 	"luminous/internal/handler"
+	"luminous/internal/mcpserver"
 	"luminous/internal/middleware"
 	"luminous/internal/repository"
 	"luminous/internal/router"
@@ -43,11 +44,12 @@ func main() {
 	schoolHandler := handler.NewSchoolHandler(pgRepo)
 	adminHandler := handler.NewAdminHandler(pgRepo)
 	appHandler := handler.NewAppHandler(cfg.Release)
+	mcpHandler := mcpserver.NewHandler(pgRepo, cfg.Release)
 
 	r, err := router.SetupRouter(schoolHandler, adminHandler, appHandler,
 		cfg.Auth.AdminToken, cfg.Server.CORSOrigin,
 		cfg.RateLimit.Rate, cfg.RateLimit.Burst,
-		cfg.Server.TrustedProxies)
+		cfg.Server.TrustedProxies, mcpHandler, cfg.Auth.MCPToken)
 	if err != nil {
 		slog.Error("Failed to setup router", "error", err)
 		os.Exit(1)
