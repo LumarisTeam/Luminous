@@ -100,7 +100,7 @@ Luminous/
 
 | 文件 | 说明 |
 |------|------|
-| `model/school.go` | 核心数据模型。`School` 结构体（code、name、website、features、enabled、时间戳）；`Feature` 字符串枚举（12 种教务功能）及 `IsValidFeature()`；`CreateSchoolRequest`（必填）和 `UpdateSchoolRequest`（指针字段部分更新）；`IsValidSchoolCode()` 正则校验；`IsValidURL()` 校验。 |
+| `model/school.go` | 核心数据模型。`School` 结构体（code、name、website、edu_system_url、features、enabled、时间戳）；`Feature` 字符串枚举（12 种教务功能）及 `IsValidFeature()`；`CreateSchoolRequest`（必填）和 `UpdateSchoolRequest`（指针字段部分更新）；`IsValidSchoolCode()` 正则校验；`IsValidURL()` 校验（拒绝私网地址，用于会被服务端代理抓取的 `website`）；`IsValidEduSystemURL()` 校验（允许空串与私网地址，用于仅由客户端打开的 `edu_system_url`）。 |
 | `model/releaseInfo.go` | App 版本信息结构体：`ReleaseInfo`、`AuthorInfo`、`AssetInfo`、`RawApiResponse`。映射上游 App 更新 API 的 JSON。 |
 
 ### 仓库层 (`internal/repository/`)
@@ -373,6 +373,7 @@ curl -X POST http://localhost:8080/api/v1/admin/schools \
     "code": "XAUAT",
     "name": "西安建筑科技大学",
     "website": "https://xauatapi.xauat.site",
+    "edu_system_url": "https://jwc.xauat.edu.cn",
     "features": ["login", "timetable", "grade_query", "exam_schedule"]
   }'
 ```
@@ -385,6 +386,9 @@ curl -X PUT http://localhost:8080/api/v1/admin/schools/XAUAT \
   -H "Content-Type: application/json" \
   -d '{"enabled": false}'
 ```
+
+**字段说明：** `website` 是学校后端 API 地址（会被服务端代理抓取，故不允许私网地址）；`edu_system_url` 是学生登录教务系统的地址，用于客户端指引与 HTML 课表导入，**可选**，允许为空也允许校园网内网地址，为空时客户端回退到 `website`。
+
 
 ### 功能枚举 (Features)
 
@@ -566,6 +570,7 @@ go run ./cmd/luminous-mcp-server
     "code": "XAUAT",
     "name": "西安建筑科技大学",
     "website": "https://xauatapi.xauat.site",
+    "edu_system_url": "https://jwc.xauat.edu.cn",
     "features": ["login", "timetable", "grade_query"],
     "enabled": true
   }

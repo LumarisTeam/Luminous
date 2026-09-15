@@ -49,7 +49,26 @@ func IsValidSchoolCode(code string) bool {
 	return schoolCodeRe.MatchString(code)
 }
 
+// IsValidURL reports whether raw is an http(s) URL that this server may fetch.
+// Private and link-local addresses are rejected because a school's website is
+// used as the upstream base URL by the MCP proxy.
 func IsValidURL(raw string) bool {
+	return isValidHTTPURL(raw, false)
+}
+
+// IsValidEduSystemURL reports whether raw is an acceptable educational
+// administration system address. An empty value is valid: the field is
+// optional, and consumers fall back to the school's website when it is unset.
+//
+// Unlike IsValidURL this permits private addresses. The URL is only ever
+// opened by the client (WebView or browser) and is never fetched by this
+// server, so there is no SSRF surface here, while campus systems are often
+// reachable only from the campus network.
+func IsValidEduSystemURL(raw string) bool {
+	return raw == "" || isValidHTTPURL(raw, true)
+}
+
+func isValidHTTPURL(raw string, allowPrivate bool) bool {
 	u, err := url.Parse(raw)
 	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" {
 		return false
@@ -57,14 +76,14 @@ func IsValidURL(raw string) bool {
 	if u.User != nil {
 		return false
 	}
+	if allowPrivate {
+		return true
+	}
 	host, _, err := net.SplitHostPort(u.Host)
 	if err != nil {
 		host = u.Host
 	}
-	if isPrivateIP(host) {
-		return false
-	}
-	return true
+	return !isPrivateIP(host)
 }
 
 var reservedCIDRs = []string{
@@ -106,6 +125,7 @@ type School struct {
 	Code         string    `json:"code"`
 	Name         string    `json:"name"`
 	Website      string    `json:"website"`
+	EduSystemURL string    `json:"edu_system_url"`
 	Features     []Feature `json:"features"`
 	Enabled      bool      `json:"enabled"`
 	WeekStartDay int       `json:"week_start_day"`
@@ -117,6 +137,7 @@ type CreateSchoolRequest struct {
 	Code         string    `json:"code" binding:"required"`
 	Name         string    `json:"name" binding:"required"`
 	Website      string    `json:"website" binding:"required"`
+	EduSystemURL string    `json:"edu_system_url"`
 	Features     []Feature `json:"features" binding:"required"`
 	WeekStartDay int       `json:"week_start_day"`
 }
@@ -124,6 +145,7 @@ type CreateSchoolRequest struct {
 type UpdateSchoolRequest struct {
 	Name         *string    `json:"name"`
 	Website      *string    `json:"website"`
+	EduSystemURL *string    `json:"edu_system_url"`
 	Features     *[]Feature `json:"features"`
 	Enabled      *bool      `json:"enabled"`
 	WeekStartDay *int       `json:"week_start_day"`

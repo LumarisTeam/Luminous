@@ -3,6 +3,7 @@
     "code": "NWPU",
     "name": "西北工业大学",
     "website": "https://nwpuapi.xauat.site",
+    "edu_system_url": "",
     "features": [
       "timetable",
       "grade_query",
@@ -17,6 +18,7 @@
     "code": "XAUAT",
     "name": "西安建筑科技大学",
     "website": "https://xauatapi.xauat.site/v1",
+    "edu_system_url": "",
     "features": [
       "login",
       "timetable",
@@ -39,6 +41,7 @@
     "code": "XDU",
     "name": "西安电子科技大学",
     "website": "https://xidianapi.xauat.site/v1",
+    "edu_system_url": "",
     "features": [
       "timetable",
       "grade_query",
@@ -53,6 +56,7 @@
     "code": "XJTU",
     "name": "西安交通大学",
     "website": "https://xjtuapi.xauat.site",
+    "edu_system_url": "",
     "features": [
       "timetable",
       "grade_query",

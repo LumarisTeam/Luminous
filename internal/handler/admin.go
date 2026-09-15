@@ -80,6 +80,10 @@ func (h *AdminHandler) CreateSchool(c *gin.Context) {
 		response.Error(c, http.StatusBadRequest, "invalid website URL")
 		return
 	}
+	if !model.IsValidEduSystemURL(req.EduSystemURL) {
+		response.Error(c, http.StatusBadRequest, "invalid edu system URL")
+		return
+	}
 
 	for _, f := range req.Features {
 		if !model.IsValidFeature(f) {
@@ -93,6 +97,7 @@ func (h *AdminHandler) CreateSchool(c *gin.Context) {
 		Code:         req.Code,
 		Name:         req.Name,
 		Website:      req.Website,
+		EduSystemURL: req.EduSystemURL,
 		Features:     req.Features,
 		Enabled:      true,
 		WeekStartDay: req.WeekStartDay,
@@ -148,6 +153,13 @@ func (h *AdminHandler) UpdateSchool(c *gin.Context) {
 			return
 		}
 		existing.Website = *req.Website
+	}
+	if req.EduSystemURL != nil {
+		if !model.IsValidEduSystemURL(*req.EduSystemURL) {
+			response.Error(c, http.StatusBadRequest, "invalid edu system URL")
+			return
+		}
+		existing.EduSystemURL = *req.EduSystemURL
 	}
 	if req.Features != nil {
 		for _, f := range *req.Features {

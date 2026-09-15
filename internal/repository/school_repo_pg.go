@@ -60,6 +60,7 @@ func (r *PGSchoolRepository) autoMigrate(ctx context.Context) error {
 			code           TEXT PRIMARY KEY,
 			name           TEXT NOT NULL,
 			website        TEXT NOT NULL DEFAULT '',
+			edu_system_url TEXT NOT NULL DEFAULT '',
 			features       TEXT[] NOT NULL DEFAULT '{}',
 			enabled        BOOLEAN NOT NULL DEFAULT true,
 			week_start_day INTEGER NOT NULL DEFAULT 0,
@@ -75,6 +76,7 @@ func (r *PGSchoolRepository) autoMigrate(ctx context.Context) error {
 	// New columns added in the future should use ALTER TABLE ... ADD COLUMN IF NOT EXISTS.
 	columns := map[string]string{
 		"website":        "TEXT NOT NULL DEFAULT ''",
+		"edu_system_url": "TEXT NOT NULL DEFAULT ''",
 		"features":       "TEXT[] NOT NULL DEFAULT '{}'",
 		"enabled":        "BOOLEAN NOT NULL DEFAULT true",
 		"week_start_day": "INTEGER NOT NULL DEFAULT 0",
@@ -97,11 +99,11 @@ func (r *PGSchoolRepository) FindAll(ctx context.Context, offset, limit int) ([]
 	var err error
 	if limit > 0 {
 		rows, err = r.pool.Query(ctx,
-			`SELECT code, name, website, features, enabled, week_start_day, created_at, updated_at
+			`SELECT code, name, website, edu_system_url, features, enabled, week_start_day, created_at, updated_at
 			 FROM schools ORDER BY code LIMIT $1 OFFSET $2`, limit, offset)
 	} else {
 		rows, err = r.pool.Query(ctx,
-			`SELECT code, name, website, features, enabled, week_start_day, created_at, updated_at
+			`SELECT code, name, website, edu_system_url, features, enabled, week_start_day, created_at, updated_at
 			 FROM schools ORDER BY code`)
 	}
 	if err != nil {
@@ -134,7 +136,7 @@ func (r *PGSchoolRepository) Count(ctx context.Context) (int, error) {
 
 func (r *PGSchoolRepository) FindEnabled(ctx context.Context) ([]*model.School, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT code, name, website, features, enabled, week_start_day, created_at, updated_at
+		`SELECT code, name, website, edu_system_url, features, enabled, week_start_day, created_at, updated_at
 		 FROM schools WHERE enabled = true ORDER BY code`)
 	if err != nil {
 		return nil, fmt.Errorf("find enabled schools: %w", err)
@@ -157,7 +159,7 @@ func (r *PGSchoolRepository) FindEnabled(ctx context.Context) ([]*model.School, 
 
 func (r *PGSchoolRepository) FindByCode(ctx context.Context, code string) (*model.School, error) {
 	row := r.pool.QueryRow(ctx,
-		`SELECT code, name, website, features, enabled, week_start_day, created_at, updated_at
+		`SELECT code, name, website, edu_system_url, features, enabled, week_start_day, created_at, updated_at
 		 FROM schools WHERE code = $1`, code)
 	return scanSchool(row)
 }
@@ -171,10 +173,10 @@ func (r *PGSchoolRepository) Create(ctx context.Context, school *model.School) e
 	}
 
 	tag, err := r.pool.Exec(ctx,
-		`INSERT INTO schools (code, name, website, features, enabled, week_start_day, created_at, updated_at)
-		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8)
+		`INSERT INTO schools (code, name, website, edu_system_url, features, enabled, week_start_day, created_at, updated_at)
+		 VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
 		 ON CONFLICT (code) DO NOTHING`,
-		school.Code, school.Name, school.Website,
+		school.Code, school.Name, school.Website, school.EduSystemURL,
 		featuresToStrings(school.Features), school.Enabled,
 		school.WeekStartDay, school.CreatedAt, school.UpdatedAt)
 	if err != nil {
@@ -191,9 +193,10 @@ func (r *PGSchoolRepository) Update(ctx context.Context, school *model.School) e
 
 	tag, err := r.pool.Exec(ctx,
 		`UPDATE schools
-		 SET name=$1, website=$2, features=$3, enabled=$4, week_start_day=$5, updated_at=$6
-		 WHERE code=$7`,
-		school.Name, school.Website, featuresToStrings(school.Features),
+		 SET name=$1, website=$2, edu_system_url=$3, features=$4, enabled=$5, week_start_day=$6, updated_at=$7
+		 WHERE code=$8`,
+		school.Name, school.Website, school.EduSystemURL,
+		featuresToStrings(school.Features),
 		school.Enabled, school.WeekStartDay, school.UpdatedAt, school.Code)
 	if err != nil {
 		return fmt.Errorf("update school: %w", err)
@@ -219,7 +222,7 @@ func (r *PGSchoolRepository) Delete(ctx context.Context, code string) error {
 func scanSchool(row pgx.Row) (*model.School, error) {
 	var s model.School
 	var features []string
-	err := row.Scan(&s.Code, &s.Name, &s.Website, &features,
+	err := row.Scan(&s.Code, &s.Name, &s.Website, &s.EduSystemURL, &features,
 		&s.Enabled, &s.WeekStartDay, &s.CreatedAt, &s.UpdatedAt)
 	if err != nil {
 		if err == pgx.ErrNoRows {

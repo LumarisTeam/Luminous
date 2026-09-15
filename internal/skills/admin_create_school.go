@@ -40,6 +40,10 @@ func (s *AdminCreateSchoolSkill) Definition() skill.ToolDef {
 					Type:        "string",
 					Description: "学校后端 API 网站地址，必须以 http:// 或 https:// 开头，如 https://xauatapi.xauat.site",
 				},
+				"edu_system_url": {
+					Type:        "string",
+					Description: "教务系统地址（可选），即学生登录教务系统的网址，必须以 http:// 或 https:// 开头，如 https://jwc.example.edu.cn。留空时客户端会回退到 website",
+				},
 				"features": {
 					Type:        "array",
 					Description: "教务功能列表（字符串数组）。可选值：login, timetable, grade_query, gpa_calculation, exam_schedule, course_schedule, bus_schedule, program, study_progress, electricity, payment, map",
@@ -115,6 +119,12 @@ func (s *AdminCreateSchoolSkill) Execute(ctx context.Context, args map[string]an
 		"name":     nameStr,
 		"website":  websiteStr,
 		"features": featuresArr,
+	}
+
+	if v, ok := args["edu_system_url"]; ok && v != nil {
+		if s, ok := v.(string); ok && s != "" {
+			reqBody["edu_system_url"] = s
+		}
 	}
 
 	if v, ok := args["week_start_day"]; ok && v != nil {

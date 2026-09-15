@@ -227,3 +227,50 @@ func TestPGFindAllPagination(t *testing.T) {
 		t.Fatal("page2 should not overlap with page1")
 	}
 }
+
+func TestPGEduSystemURLRoundTrip(t *testing.T) {
+	repo := setupPGTest(t)
+
+	school := &model.School{
+		Code:         "EDU",
+		Name:         "Edu U",
+		Website:      "https://api.edu",
+		EduSystemURL: "https://jwc.edu.cn/jwglxt",
+		Features:     []model.Feature{},
+		Enabled:      true,
+	}
+	if err := repo.Create(testCtx, school); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	got, err := repo.FindByCode(testCtx, "EDU")
+	if err != nil {
+		t.Fatalf("FindByCode: %v", err)
+	}
+	if got.EduSystemURL != "https://jwc.edu.cn/jwglxt" {
+		t.Fatalf("expected edu system url to persist, got %q", got.EduSystemURL)
+	}
+
+	got.EduSystemURL = "https://new-jwc.edu.cn"
+	if err := repo.Update(testCtx, got); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	updated, err := repo.FindByCode(testCtx, "EDU")
+	if err != nil {
+		t.Fatalf("FindByCode after update: %v", err)
+	}
+	if updated.EduSystemURL != "https://new-jwc.edu.cn" {
+		t.Fatalf("expected updated edu system url, got %q", updated.EduSystemURL)
+	}
+
+	// FindEnabled shares the SELECT list and scanSchool, so it must agree.
+	enabled, err := repo.FindEnabled(testCtx)
+	if err != nil {
+		t.Fatalf("FindEnabled: %v", err)
+	}
+	for _, s := range enabled {
+		if s.Code == "EDU" && s.EduSystemURL != "https://new-jwc.edu.cn" {
+			t.Fatalf("FindEnabled returned %q, want the updated value", s.EduSystemURL)
+		}
+	}
+}

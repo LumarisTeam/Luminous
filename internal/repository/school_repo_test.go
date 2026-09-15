@@ -243,3 +243,68 @@ func TestFindAllPagination(t *testing.T) {
 		t.Fatalf("expected 5, got %d", len(all))
 	}
 }
+
+func TestEduSystemURLRoundTrip(t *testing.T) {
+	path := tempFile(t)
+	repo, err := NewJSONSchoolRepository(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	school := &model.School{
+		Code:         "EDU",
+		Name:         "Edu U",
+		Website:      "https://api.edu",
+		EduSystemURL: "https://jwc.edu.cn/jwglxt",
+		Features:     []model.Feature{},
+		Enabled:      true,
+	}
+	if err := repo.Create(testCtx, school); err != nil {
+		t.Fatalf("Create: %v", err)
+	}
+
+	// Reload from disk to prove the field survives persistence, not just the
+	// in-memory map.
+	reloaded, err := NewJSONSchoolRepository(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := reloaded.FindByCode(testCtx, "EDU")
+	if err != nil {
+		t.Fatalf("FindByCode: %v", err)
+	}
+	if got.EduSystemURL != "https://jwc.edu.cn/jwglxt" {
+		t.Fatalf("expected edu system url to persist, got %q", got.EduSystemURL)
+	}
+
+	got.EduSystemURL = ""
+	if err := reloaded.Update(testCtx, got); err != nil {
+		t.Fatalf("Update: %v", err)
+	}
+	cleared, err := reloaded.FindByCode(testCtx, "EDU")
+	if err != nil {
+		t.Fatalf("FindByCode after update: %v", err)
+	}
+	if cleared.EduSystemURL != "" {
+		t.Fatalf("expected edu system url to be cleared, got %q", cleared.EduSystemURL)
+	}
+}
+
+func TestEduSystemURLDefaultsToEmptyWhenAbsent(t *testing.T) {
+	path := tempFile(t)
+	if err := os.WriteFile(path, []byte(`{"OLD":{"code":"OLD","name":"Old","website":"https://old.edu","features":[],"enabled":true}}`), 0644); err != nil {
+		t.Fatal(err)
+	}
+
+	repo, err := NewJSONSchoolRepository(path)
+	if err != nil {
+		t.Fatal(err)
+	}
+	got, err := repo.FindByCode(testCtx, "OLD")
+	if err != nil {
+		t.Fatalf("FindByCode: %v", err)
+	}
+	if got.EduSystemURL != "" {
+		t.Fatalf("expected empty edu system url for legacy record, got %q", got.EduSystemURL)
+	}
+}
