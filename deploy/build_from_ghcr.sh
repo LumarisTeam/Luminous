@@ -19,10 +19,19 @@
 #   ./build_from_ghcr.sh ghcr.io/lumaristeam/luminous:<commit-sha>   # 指定版本，也是回滚方式
 #   APP_PORT=8080 ./build_from_ghcr.sh
 #   IMAGE=... APP_PORT=... COMPOSE_PROJECT_NAME=... ./build_from_ghcr.sh
+#   sh build_from_ghcr.sh                 # /bin/sh 是 dash 时同样可用（脚本会自己切到 bash）
 #
 # 同目录必须有：
 #   docker-compose.yml 或 docker-compose.production.yml   （两种名字都认）
 #   .env                                                   （见仓库根的 .env.example）
+
+# 服务器上最常见的调用方式是 `sh build_from_ghcr.sh`，而 Debian/Ubuntu 的 /bin/sh 是 dash：
+# 它既没有 pipefail，也没有 [[ ]] / (( )) / $SECONDS / $BASH_SOURCE，会在下面那行 set
+# 直接以 "Illegal option -o pipefail" 退出，连参数校验都轮不到。
+# 检测到当前不是 bash 就用 bash 重新执行自己，让 `sh x.sh` 与 `./x.sh` 完全等价。
+if [ -z "${BASH_VERSION:-}" ]; then
+  exec bash "$0" "$@"
+fi
 
 set -euo pipefail
 
