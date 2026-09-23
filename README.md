@@ -445,22 +445,23 @@ docker run -d \
 ### 服务器部署（从 ghcr 拉取）
 
 CI（`.github/workflows/build-image.yml`）在推送到 `master` 时跑 `go vet` 与 `go test`，
-再把镜像推送到 `ghcr.io/lumaristeam/luminous`。**它不部署**——服务器上的发布手动执行：
+再把镜像推**两份**（ghcr.io 作归档，腾讯云 TCR 供国内服务器拉取）。**它不部署**——服务器上的发布手动执行：
 
 ```bash
 cd deploy
 ./build_from_ghcr.sh                                          # 拉 :latest
-./build_from_ghcr.sh ghcr.io/lumaristeam/luminous:<sha>       # 指定版本，也是回滚方式
+./build_from_ghcr.sh ccr.ccs.tencentyun.com/lumaris/luminous:<sha>   # 指定版本，也是回滚方式
 APP_PORT=8080 ./build_from_ghcr.sh                            # 改宿主机端口（默认 23467）
 ```
 
 同目录需要 `docker-compose.production.yml`（或 `docker-compose.yml`）和 `.env`。
 `LUMINOUS_DATABASE_DSN` 是必需项——缺失或库连不上时进程直接退出，不会降级启动。
 
-镜像在 ghcr 上是私有的，服务器拉取前需要一张只读凭据：
-在 GitHub → `Settings` → `Developer settings` → `Personal access tokens` → **Tokens (classic)**
-生成，**只勾 `read:packages`**（GitHub Packages 不支持 fine-grained token），然后
-`GHCR_PULL_TOKEN=<token> GHCR_USERNAME=<用户名> ./build_from_ghcr.sh`；脚本用完即登出。
+服务器默认从 TCR 拉：ghcr 的镜像层走 `pkg-containers.githubusercontent.com`，在国内基本
+拉不动（命令能通、认证也能过，就是层下不来）。TCR 是私有仓库，用户名是腾讯云账号 ID，
+密码在 TCR 控制台实例管理里「初始化密码」设置，然后
+`PULL_TOKEN=<固定密码> PULL_USERNAME=<腾讯云账号ID> ./build_from_ghcr.sh`；脚本用完即登出。
+要用 ghcr 那份就加 `USE_GHCR=1`，凭据换成一张 classic PAT（**只勾 `read:packages`**）。
 
 > 本服务刻意不加入 `xauat-net`：没有别的容器需要按名字解析它，接进共享网络只会给部署
 > 多一个前置条件。它是唯一由外部直接访问的服务，因此映射宿主机端口。

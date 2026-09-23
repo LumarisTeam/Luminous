@@ -17,6 +17,14 @@ concurrency:
 
 env:
   REGISTRY: ghcr.io
+  # 国内镜像仓库：这两个 Variable 都配了才会双推，没配就只推 ghcr。
+  # 配在 仓库/组织 → Settings → Secrets and variables → Actions → Variables。
+  # 本项目用腾讯云 TCR 个人版，所以 MIRROR_REGISTRY=ccr.ccs.tencentyun.com；
+  # MIRROR_NAMESPACE 填 TCR 控制台里建的命名空间，仓库名沿用 $GITHUB_REPOSITORY 的末段。
+  # 配套的 MIRROR_USERNAME / MIRROR_PASSWORD 两个 Secret：用户名是腾讯云账号 ID，
+  # 密码是 TCR 实例管理里「初始化密码」设的固定密码。
+  MIRROR_REGISTRY: ${{ vars.MIRROR_REGISTRY }}
+  MIRROR_NAMESPACE: ${{ vars.MIRROR_NAMESPACE }}
 
 jobs:
   test:
@@ -44,12 +52,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - name: Resolve image name
+      - name: Resolve image name and tags
         id: image
         shell: bash
         run: |
           repository="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
-          echo "image=${REGISTRY}/${repository}" >> "$GITHUB_OUTPUT"
+          image="${REGISTRY}/${repository}"
+          name="${repository##*/}"
+
+          # tag 列表：ghcr 永远推；配了国内镜像仓库时，再把同一批 tag 推一份过去，
+          # 好让国内服务器从那边拉，绕开 ghcr 的跨国链路。
+          {
+            echo "tags<<TAGS_EOF"
+            echo "${image}:${GITHUB_SHA}"
+            echo "${image}:latest"
+            if [[ -n "$MIRROR_REGISTRY" && -n "$MIRROR_NAMESPACE" ]]; then
+              echo "${MIRROR_REGISTRY}/${MIRROR_NAMESPACE}/${name}:${GITHUB_SHA}"
+              echo "${MIRROR_REGISTRY}/${MIRROR_NAMESPACE}/${name}:latest"
+            fi
+            echo "TAGS_EOF"
+          } >> "$GITHUB_OUTPUT"
+
+          echo "image=${image}" >> "$GITHUB_OUTPUT"
       - uses: docker/setup-buildx-action@v3
       - name: Sign in to GitHub Container Registry
         uses: docker/login-action@v3
@@ -57,6 +81,14 @@ jobs:
           registry: ${{ env.REGISTRY }}
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
+      # 国内镜像仓库：上面两个 Variable 都配了才会登录并多推一份。
+      - name: Sign in to mirror registry
+        if: env.MIRROR_REGISTRY != '' && env.MIRROR_NAMESPACE != ''
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.MIRROR_REGISTRY }}
+          username: ${{ secrets.MIRROR_USERNAME }}
+          password: ${{ secrets.MIRROR_PASSWORD }}
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -64,9 +96,7 @@ jobs:
           # Dockerfile 在仓库根目录
           file: Dockerfile
           push: true
-          tags: |
-            ${{ steps.image.outputs.image }}:${{ github.sha }}
-            ${{ steps.image.outputs.image }}:latest
+          tags: ${{ steps.image.outputs.tags }}
           # Dockerfile 里 go mod download 与 go build 都挂了 cache mount，
           # 配合 gha 缓存能把重复构建的依赖下载省掉。
           cache-from: type=gha

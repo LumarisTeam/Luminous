@@ -1,14 +1,14 @@
 #!/usr/bin/env bash
 #
-# 服务器单例部署：从 ghcr 拉取预构建镜像，复用本目录的 compose 定义起一个容器。
+# 服务器单例部署：从镜像仓库拉取预构建镜像，复用本目录的 compose 定义起一个容器。
 #
 # 为什么是"拉"而不是"构建"：本项目的 Dockerfile 要在服务器上跑一次完整的 Go 构建
 # （拉 golang 基础镜像 + 编译全部依赖）；而 CI（.github/workflows/build-image.yml）
 # 已经在 ubuntu-latest 上构建并推送了镜像。本脚本只负责拉取与重启。
 #
 # 与仓库根目录 build.sh 是两条并行路径，别混着用：
-#   本脚本     从 ghcr 拉 CI 构建好的不可变镜像，用 compose 起。部署默认走这条。
-#   根目录     从源码构建本地镜像并起容器（走 prod.env），供服务器上没有 ghcr 凭据时应急。
+#   本脚本     从镜像仓库拉 CI 构建好的不可变镜像，用 compose 起。部署默认走这条。
+#   根目录     从源码构建本地镜像并起容器（走 prod.env），供服务器上没有 registry 凭据时应急。
 #
 # 两条路径的容器名都是 luminous，互相不能叠加：根目录脚本起的是 docker run 直接创建的
 # 容器，不带 compose 标签，之后再用本脚本会因容器名冲突而失败，需要先
@@ -16,9 +16,11 @@
 #
 # 用法：
 #   ./build_from_ghcr.sh
-#   ./build_from_ghcr.sh ghcr.io/lumaristeam/luminous:<commit-sha>   # 指定版本，也是回滚方式
+#   ./build_from_ghcr.sh ccr.ccs.tencentyun.com/lumaris/luminous:<commit-sha>   # 指定版本，也是回滚方式
 #   APP_PORT=8080 ./build_from_ghcr.sh
 #   IMAGE=... APP_PORT=... COMPOSE_PROJECT_NAME=... ./build_from_ghcr.sh
+#   USE_GHCR=1 ./build_from_ghcr.sh       # 改从 ghcr.io 拉（国内一般拉不动）
+#   TAKE_OVER=1 ./build_from_ghcr.sh     # 同名容器是 docker run 起的时，先删掉它再起
 #   sh build_from_ghcr.sh                 # /bin/sh 是 dash 时同样可用（脚本会自己切到 bash）
 #
 # 同目录必须有：
@@ -38,8 +40,18 @@ set -euo pipefail
 CONTAINER_NAME="luminous"
 SERVICE_NAME="luminous"
 
-DEFAULT_IMAGE="ghcr.io/lumaristeam/luminous:latest"
+# 镜像来源。CI 把同一批 tag 双推两份：ghcr 作归档，腾讯云 TCR 供国内服务器拉取
+# （ghcr 的镜像层走 pkg-containers.githubusercontent.com，在国内基本拉不动）。
+# 默认走 TCR；要用 ghcr 就 USE_GHCR=1，或用 IMAGE 直接给完整镜像名。
+if [[ "${USE_GHCR:-0}" == "1" ]]; then
+  DEFAULT_IMAGE="ghcr.io/lumaristeam/luminous:latest"
+else
+  DEFAULT_IMAGE="ccr.ccs.tencentyun.com/lumaris/luminous:latest"
+fi
 IMAGE="${IMAGE:-${1:-$DEFAULT_IMAGE}}"
+
+# 镜像仓库域名直接从镜像名里取：登录、登出都用它，换 registry 时不必再改别处。
+REGISTRY_HOST="${IMAGE%%/*}"
 
 APP_PORT="${APP_PORT:-23467}"
 READY_TIMEOUT="${READY_TIMEOUT:-60}"
@@ -86,29 +98,57 @@ ENV_HELP
   exit 1
 fi
 
+# 固定 container_name 被既有容器占用时，compose 只抛一句
+# "Conflict. The container name ... is already in use"，既不说原因也不说怎么办，
+# 所以这里提前把两种情形分开讲清楚：
+#   有 compose 标签但 project 不同 —— compose 不会接管别的 project 的容器
+#   完全没有 compose 标签          —— 是 `docker run` 起的（仓库根目录 build.sh 那条源码构建路径）
 if docker container inspect "$CONTAINER_NAME" >/dev/null 2>&1; then
   owner="$(docker container inspect -f '{{index .Config.Labels "com.docker.compose.project"}}' "$CONTAINER_NAME" 2>/dev/null || true)"
   [[ "$owner" == "<no value>" ]] && owner=""
-  if [[ -n "$owner" && "$owner" != "$COMPOSE_PROJECT_NAME" ]]; then
+
+  if [[ -z "$owner" ]]; then
+    if [[ "${TAKE_OVER:-0}" == "1" ]]; then
+      echo "==> 移除既有容器 ${CONTAINER_NAME}（docker run 创建，不受 compose 管理）"
+      docker rm -f "$CONTAINER_NAME" >/dev/null
+    else
+      cat >&2 <<TAKEOVER
+错误：容器 $CONTAINER_NAME 已存在，但它不带 compose 标签，也就是由 docker run 直接创建的
+      ——多半来自仓库根目录 build.sh 那条源码构建路径。
+
+compose 不会接管这种容器，直接 up 就会报：
+  Conflict. The container name "/$CONTAINER_NAME" is already in use
+
+删它之前先确认它确实是可停的旧容器：
+  docker inspect -f '{{.Config.Image}}' $CONTAINER_NAME
+  docker ps --filter name=$CONTAINER_NAME
+
+确认无误后二选一：
+  docker rm -f $CONTAINER_NAME     # 然后重跑本脚本
+  TAKE_OVER=1 $0                   # 让本脚本替你删掉再起
+TAKEOVER
+      exit 1
+    fi
+  elif [[ "$owner" != "$COMPOSE_PROJECT_NAME" ]]; then
     cat >&2 <<CONFLICT
 错误：容器 $CONTAINER_NAME 已存在，但属于另一个 compose project「${owner}」。
 
 compose 不会接管别的 project 的容器。二选一：
   docker rm -f $CONTAINER_NAME          # 让本脚本接管
-  COMPOSE_PROJECT_NAME=$owner ./build_from_ghcr.sh   # 沿用那个 project
+  COMPOSE_PROJECT_NAME=$owner $0   # 沿用那个 project
 CONFLICT
     exit 1
   fi
 fi
 
-# ------------------------------------------------------------------ ghcr 登录
+# ------------------------------------------------------------------ 镜像仓库登录
 
 # 镜像若为私有，需要凭据。优先用传入的 token（用完即登出）；否则沿用本机已有的
-# docker 凭据（此前手动 docker login ghcr.io 过就行）。
-if [[ -n "${GHCR_PULL_TOKEN:-}" ]]; then
-  : "${GHCR_USERNAME:?设置了 GHCR_PULL_TOKEN 就必须同时设置 GHCR_USERNAME}"
-  trap 'docker logout ghcr.io >/dev/null 2>&1 || true' EXIT
-  printf '%s' "$GHCR_PULL_TOKEN" | docker login ghcr.io --username "$GHCR_USERNAME" --password-stdin
+# docker 凭据（此前手动 docker login <registry> 过就行）。
+if [[ -n "${PULL_TOKEN:-}" ]]; then
+  : "${PULL_USERNAME:?设置了 PULL_TOKEN 就必须同时设置 PULL_USERNAME}"
+  trap 'docker logout "$REGISTRY_HOST" >/dev/null 2>&1 || true' EXIT
+  printf '%s' "$PULL_TOKEN" | docker login "$REGISTRY_HOST" --username "$PULL_USERNAME" --password-stdin
 fi
 
 # ------------------------------------------------------------------ 拉取与启动
