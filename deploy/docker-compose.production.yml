@@ -1,0 +1,17 @@
+services:
+  luminous:
+    image: ${IMAGE:?IMAGE must be set to an immutable image tag}
+    container_name: luminous
+    restart: unless-stopped
+    env_file:
+      - .env
+    # 刻意不加入 xauat-net：本服务是独立对外的一套 API，没有任何容器需要按名字解析它，
+    # 接进那张共享网络只会给部署多一个「宿主机上必须先有那张网络」的前置条件。
+    # 同理，它是唯一由外部直接访问的服务，因此需要映射宿主机端口。
+    ports:
+      - "${APP_PORT:-23467}:8080"
+    # 无卷：数据全在 PostgreSQL 里（LUMINOUS_DATABASE_DSN），容器自身不落任何状态。
+    #
+    # 镜像的 HEALTHCHECK（wget http://localhost:8080/healthz）在 Dockerfile 里，
+    # 基础镜像是 alpine，busybox 自带 wget，因此容器级健康检查可用
+    # ——这一点与 LoginApi / PaymentAPI 的 chiseled 镜像不同。

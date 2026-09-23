@@ -1,4 +1,18 @@
 #!/usr/bin/env bash
+#
+# 根目录源码构建：git pull -> docker build -> 换掉旧容器。
+# 与 deploy/build_from_ghcr.sh 是两条并行路径，别混着用：
+#
+#   本脚本      本机从源码构建镜像并起容器。适合服务器上没有 ghcr 凭据、或就是要跑当前工作区代码。
+#   deploy/     从 ghcr 拉 CI 构建好的不可变镜像，用 compose 起。部署默认走这条。
+#
+# 两条路径的容器名都是 luminous，互相不能叠加：本脚本起的是 docker run 直接创建的容器，
+# 不带 compose 标签，之后再用 deploy/build_from_ghcr.sh 会因容器名冲突而失败，
+# 需要先 `docker rm -f luminous`。
+#
+# 用法：
+#   ./build.sh
+#   PART=8080 ./build.sh
 
 PART="${PART:-${1:-23467}}"
 if [[ ! "$PART" =~ ^[0-9]+$ ]] || (( PART < 1 || PART > 65535 )); then

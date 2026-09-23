@@ -1,0 +1,73 @@
+name: Build image
+
+on:
+  pull_request:
+    branches: [master]
+  push:
+    branches: [master]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  packages: write
+
+concurrency:
+  group: build-image
+  cancel-in-progress: false
+
+env:
+  REGISTRY: ghcr.io
+
+jobs:
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+      - name: Vet
+        run: go vet ./...
+      # 刻意**不加** -tags integration：school_repo_pg_test.go 带 integration 构建标签，
+      # 它的 setupPGTest 会对 LUMINOUS_DATABASE_DSN 指向的库执行
+      # `DROP TABLE IF EXISTS schools CASCADE`。CI 里一旦同时有 DSN 和这个标签，
+      # 就是一条删库命令。普通 go test ./... 不含该标签，这个文件根本不会被编译进来。
+      - name: Test
+        run: go test ./...
+
+  publish:
+    name: Build image
+    needs: test
+    if: github.event_name != 'pull_request'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Resolve image name
+        id: image
+        shell: bash
+        run: |
+          repository="$(echo "$GITHUB_REPOSITORY" | tr '[:upper:]' '[:lower:]')"
+          echo "image=${REGISTRY}/${repository}" >> "$GITHUB_OUTPUT"
+      - uses: docker/setup-buildx-action@v3
+      - name: Sign in to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ${{ env.REGISTRY }}
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          # Dockerfile 在仓库根目录
+          file: Dockerfile
+          push: true
+          tags: |
+            ${{ steps.image.outputs.image }}:${{ github.sha }}
+            ${{ steps.image.outputs.image }}:latest
+          # Dockerfile 里 go mod download 与 go build 都挂了 cache mount，
+          # 配合 gha 缓存能把重复构建的依赖下载省掉。
+          cache-from: type=gha
+          cache-to: type=gha,mode=max

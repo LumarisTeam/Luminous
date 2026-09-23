@@ -70,6 +70,8 @@ Luminous/
 │           └── SKILL.md            # Claude Code Skill 说明文档
 ├── examples/
 │   └── mcp-config.example.json     # MCP Client 配置示例
+├── .github/workflows/              # CI：测试 + 构建推送镜像（不部署）
+├── deploy/                         # 服务器部署：compose 定义 + build_from_ghcr.sh
 ├── .env.example                    # 环境变量示例
 ├── .gitignore
 ├── .dockerignore
@@ -439,6 +441,29 @@ docker run -d \
 ```
 
 镜像特点：多阶段构建、静态二进制、非 root 用户（65534）、含 `HEALTHCHECK`。
+
+### 服务器部署（从 ghcr 拉取）
+
+CI（`.github/workflows/build-image.yml`）在推送到 `master` 时跑 `go vet` 与 `go test`，
+再把镜像推送到 `ghcr.io/lumaristeam/luminous`。**它不部署**——服务器上的发布手动执行：
+
+```bash
+cd deploy
+./build_from_ghcr.sh                                          # 拉 :latest
+./build_from_ghcr.sh ghcr.io/lumaristeam/luminous:<sha>       # 指定版本，也是回滚方式
+APP_PORT=8080 ./build_from_ghcr.sh                            # 改宿主机端口（默认 23467）
+```
+
+同目录需要 `docker-compose.production.yml`（或 `docker-compose.yml`）和 `.env`。
+`LUMINOUS_DATABASE_DSN` 是必需项——缺失或库连不上时进程直接退出，不会降级启动。
+
+镜像在 ghcr 上是私有的，服务器拉取前需要一张只读凭据：
+在 GitHub → `Settings` → `Developer settings` → `Personal access tokens` → **Tokens (classic)**
+生成，**只勾 `read:packages`**（GitHub Packages 不支持 fine-grained token），然后
+`GHCR_PULL_TOKEN=<token> GHCR_USERNAME=<用户名> ./build_from_ghcr.sh`；脚本用完即登出。
+
+> 本服务刻意不加入 `xauat-net`：没有别的容器需要按名字解析它，接进共享网络只会给部署
+> 多一个前置条件。它是唯一由外部直接访问的服务，因此映射宿主机端口。
 
 ## 常用命令
 
