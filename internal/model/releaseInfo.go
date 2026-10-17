@@ -23,12 +23,15 @@ type AssetInfo struct {
 	Name               string `json:"name"`
 }
 
+// RawSoft 是发布平台上的一条安装包记录。
+type RawSoft struct {
+	Name    string `json:"name"`
+	SoftUrl string `json:"softUrl"`
+}
+
 // 用于解析 GetTagModel 中特殊的 JSON 结构
 type RawApiResponse struct {
-	ReleaseId string `json:"releaseId"`
-	Context   string `json:"context"`
-	Softs     []struct {
-		Name    string `json:"name"`
-		SoftUrl string `json:"softUrl"`
-	} `json:"softs"`
+	ReleaseId string    `json:"releaseId"`
+	Context   string    `json:"context"`
+	Softs     []RawSoft `json:"softs"`
 }
