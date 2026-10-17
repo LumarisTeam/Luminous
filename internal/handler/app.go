@@ -91,7 +91,10 @@ func (h *AppHandler) GetTagModel(c *gin.Context) {
 		result[0].Assets = orderSofts(rawData.Softs, normalizeABI(c.Query("abi")))
 	}
 
-	response.SuccessList(c, http.StatusOK, "success", len(result), result)
+	// App 端（1.2.2 及更早版本）把响应体直接当作 Gitee Release 的裸数组解析，
+	// 包成 {code,message,data:{total,items}} 会让反序列化抛异常、更新检查静默失效。
+	// 该接口必须保持裸数组；需要信封的调用方请使用其它接口。
+	c.JSON(http.StatusOK, result)
 }
 
 const (

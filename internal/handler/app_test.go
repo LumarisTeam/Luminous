@@ -1,8 +1,16 @@
 package handler
 
 import (
+	"encoding/json"
+	"io"
+	"net/http"
+	"net/http/httptest"
+	"net/url"
 	"testing"
 
+	"github.com/gin-gonic/gin"
+
+	"luminous/internal/config"
 	"luminous/internal/model"
 )
 
@@ -93,5 +101,57 @@ func TestOrderSoftsKeepsStableOrderWithinABI(t *testing.T) {
 	}, "")
 	if assets[0].Name != "first-arm64.apk" || assets[1].Name != "second-arm64-v8a.apk" {
 		t.Fatalf("unexpected order: %v", assetNames(assets))
+	}
+}
+
+// TestGetTagModelReturnsBareReleaseArray 守护 /api/v1/app 的响应线上契约。
+// App 端（1.2.2 及更早版本）把响应体直接解码成 []ReleaseInfo；一旦这里变成
+// {code,message,data:{total,items}} 信封，客户端反序列化会抛异常并被静默吞掉，
+// Android 就再也收不到更新提示。
+func TestGetTagModelReturnsBareReleaseArray(t *testing.T) {
+	upstream := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = io.WriteString(w, `{
+			"releaseId": "1.2.2",
+			"context": "release notes",
+			"softs": [
+				{"name": "Downloader app-armeabi-v7a-release.apk", "softUrl": "https://example.com/app-armeabi-v7a-release.apk"},
+				{"name": "Downloader app-arm64-v8a-release.apk", "softUrl": "https://example.com/app-arm64-v8a-release.apk"}
+			]
+		}`)
+	}))
+	defer upstream.Close()
+
+	upstreamURL, err := url.Parse(upstream.URL)
+	if err != nil {
+		t.Fatalf("parse test upstream url: %v", err)
+	}
+	allowedUpstreamHosts[upstreamURL.Hostname()] = true
+	defer delete(allowedUpstreamHosts, upstreamURL.Hostname())
+
+	handler := NewAppHandler(config.ReleaseConfig{APIURL: upstream.URL})
+	gin.SetMode(gin.TestMode)
+	router := gin.New()
+	router.GET("/api/v1/app", handler.GetTagModel)
+
+	recorder := httptest.NewRecorder()
+	router.ServeHTTP(recorder, httptest.NewRequest(http.MethodGet, "/api/v1/app", nil))
+
+	if recorder.Code != http.StatusOK {
+		t.Fatalf("status = %d, want 200 (body: %s)", recorder.Code, recorder.Body.String())
+	}
+
+	var releases []model.ReleaseInfo
+	if err := json.Unmarshal(recorder.Body.Bytes(), &releases); err != nil {
+		t.Fatalf("response must be a bare release array, got %q: %v", recorder.Body.String(), err)
+	}
+	if len(releases) != 1 || releases[0].Name != "1.2.2" || releases[0].TagName != "1.2.2" {
+		t.Fatalf("unexpected releases: %+v", releases)
+	}
+	if len(releases[0].Assets) != 2 {
+		t.Fatalf("assets = %+v, want 2", releases[0].Assets)
+	}
+	if got := releases[0].Assets[0].Name; got != "Downloader app-arm64-v8a-release.apk" {
+		t.Fatalf("asset[0] = %q, want arm64 first", got)
 	}
 }

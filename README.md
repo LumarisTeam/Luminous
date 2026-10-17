@@ -120,7 +120,7 @@ Luminous/
 |------|------|
 | `handler/school.go` | `SchoolHandler` — 公开查询。`ListSchools` 返回启用学校；`GetSchool` 按 code 查询，区分 `ErrNotFound`（404）与 DB 错误（500），禁用学校同样返回 404。 |
 | `handler/admin.go` | `AdminHandler` — 管理 CRUD。`AdminListSchools` 支持 `?page=&page_size=` 分页（SQL 层 `LIMIT/OFFSET`），通过 `Count()` 返回真实 total。`CreateSchool` 强制 `Content-Type: application/json`（否则 415），校验 Feature、Code、URL 后入库（重复返回 409）。`UpdateSchool` 指针字段部分更新。`DeleteSchool` 按 code 删除。 |
-| `handler/app.go` | `AppHandler` — App 版本代理。SSRF 防护（hostname 白名单），响应体 1MB 限制，统一 `response.SuccessList` 格式。 |
+| `handler/app.go` | `AppHandler` — App 版本代理。SSRF 防护（hostname 白名单），响应体 1MB 限制。响应保持**裸数组**（App 端直接按 `[]ReleaseInfo` 反序列化），不要套 `response.SuccessList` 信封。 |
 | `handler/school_service.go` | `SchoolServiceHandler` 接口：`Code() + RegisterRoutes(*gin.RouterGroup)`。为新学校类型接入预留的扩展点。 |
 
 ### 中间件层 (`internal/middleware/`)
@@ -345,6 +345,8 @@ go vet ./...
 #### `GET /api/v1/app`
 
 获取 App 版本更新信息（代理上游 API）。
+
+响应体是 Gitee Release 兼容的**裸数组**，不是统一信封：Android 1.2.2 及更早版本会把响应直接解码成 `[]ReleaseInfo`，套上 `{code,message,data}` 会导致客户端更新检查静默失效。
 
 ### 管理员接口
 
